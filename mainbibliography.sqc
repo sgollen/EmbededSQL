@@ -1,0 +1,418 @@
+#include <stdio.h>
+#include "util.h"
+#include <string.h>
+
+EXEC SQL INCLUDE SQLCA;
+
+EXEC SQL BEGIN DECLARE SECTION;
+  char sample[6] = "cs348";
+  char author[7] = "author";
+  char authorurl[10] = "authorurl";
+  char book[5] = "book";
+  char journal[8] = "journal";
+  char proceedings[12] = "proceedings";
+  char article[8] = "article";
+  char name[23];
+  char givenName[23];
+  char url[43];
+  char pubid[11];
+  char title[71];
+  char publisher[51];
+  char appearsin[11];
+  int aid;
+  int aorder;
+  int year;
+  int volume;
+  int number;
+  int startpage;
+  int endpage;
+  int occurs;
+  int temp;
+EXEC SQL END DECLARE SECTION;
+
+
+void getAuthors() {
+    EXEC SQL DECLARE CUR1 CURSOR FOR
+       SELECT (A.name)
+       FROM author A, wrote W
+       WHERE A.aid = :aid
+       AND W.pubid = :pubid;
+
+    EXEC SQL OPEN CUR1;
+    EXEC SQL FETCH CUR1 INTO :name;
+    if (SQLCODE != 100) {
+       printf("Authors: %s", name);
+    }
+
+    for(;;) {
+      EXEC SQL FETCH CUR1 INTO :name;
+         if (SQLCODE == 100) {
+            break;
+         } else if (SQLCODE < 0) {
+            break;
+         }
+         printf(", %s", name);
+    }
+    printf("\n");
+    EXEC SQL CLOSE CUR1;
+}
+
+
+void  updateAuthor(char* inputStr) {
+   char* aidStr;
+   char* authName;
+   aidStr = strtok(NULL, "#");
+   aid = atoi(aidStr);
+   authName = strtok(NULL, ")");
+   strcpy(name, authName);
+   EXEC SQL
+       SELECT COUNT(*) INTO :occurs
+       FROM author A
+       WHERE A.aid = :aid;
+   if (occurs == 0) {
+       EXEC SQL
+         INSERT INTO author (aid, name)
+         VALUES (:aid, :name); 
+   } else {
+       EXEC SQL
+         UPDATE author 
+         SET name = :name
+         WHERE aid = :aid;        
+   }    
+////  printf("aid: %d, \n", aid);
+////  printf("Authors: %s, \n", name);
+}
+
+
+
+void updateAuthorurl(char* inputStr) {
+   char* aidStr;
+   char* authUrl;
+   aidStr = strtok(NULL, "#");
+   aid = atoi(aidStr);
+   authUrl = strtok(NULL, ")");
+   strcpy(url, authUrl);
+   EXEC SQL
+       SELECT COUNT(*) INTO :occurs
+       FROM author A
+       WHERE A.aid = :aid;
+   if(occurs == 0) {
+     EXEC SQL
+        INSERT INTO author (url)
+        VALUES (:url); 
+   }else {
+     EXEC SQL
+        UPDATE author 
+        SET url = :url
+        WHERE aid = :aid;        
+   }    
+}
+
+
+
+
+void  updateBook(char* inputStr) {
+   char* pubidStr;
+   char* pubTitle;
+   pubidStr = strtok(NULL, "#");
+   pubTitle = strtok(NULL, "#");
+   strcpy(pubid, pubidStr);
+   strcpy(title, pubTitle);
+   EXEC SQL
+       SELECT COUNT(*) INTO :occurs
+       FROM publication P
+       WHERE P.pubid = :pubid;
+   if (occurs == 0) {
+     EXEC SQL
+        INSERT INTO publication (pubid, title)
+        VALUES (:pubid, :title); 
+   } else {
+     EXEC SQL
+        UPDATE publication
+        SET title = :title
+        WHERE pubid = :pubid;        
+   }       
+   printf("Pubid: %s\n", pubid);
+   printf("Type: book\n");
+   printf("Title: %s\n", title);
+   
+   char* newAuthors;
+   char* aidStr1;
+   newAuthors = strtok(NULL, "#");
+   
+   char* publisherStr;
+   char* yearStr;
+   publisherStr = strtok(NULL, "#");
+   yearStr = strtok(NULL, ")");
+   strcpy(publisher, publisherStr);
+   year = atoi(yearStr);
+
+   EXEC SQL
+       DELETE FROM wrote
+       WHERE pubid = :pubid;
+    
+   aidStr1 = strtok(newAuthors, ";");   
+   printf("Authors: ");
+   for(temp = 1; aidStr1 != 0; temp++) {
+       aid = atoi(aidStr1); 
+       aorder = temp;
+       EXEC SQL
+           INSERT INTO wrote (aid, pubid, aorder)
+           VALUES (:aid, :pubid, :aorder);
+       
+       aidStr1 = strtok(NULL, ";");
+    
+/////  getAuthors();
+  
+       printf("%d ", aid);
+   }
+   printf("\n");  
+
+   EXEC SQL
+       SELECT COUNT(*) INTO :occurs
+       FROM book B
+       WHERE B.pubid = :pubid;
+   if (occurs == 0) {
+       EXEC SQL
+          INSERT INTO book (pubid, publisher, year)
+          VALUES (:pubid, :publisher, :year);      
+   } else {
+       EXEC SQL
+          UPDATE book
+          SET publisher = :publisher, year = :year
+          WHERE pubid = :pubid;  
+   }
+   printf("Publisher: %s\n", publisher);
+   printf("Year: %d\n\n", year);
+}
+
+
+
+void updateJournal(char* inputStr) {
+   char* pubidStr;
+   char* pubTitle;
+   pubidStr = strtok(NULL, "#");;
+   pubTitle = strtok(NULL, "#");
+   strcpy(pubid, pubidStr);
+   strcpy(title, pubTitle);
+   EXEC SQL
+       SELECT COUNT(*) INTO :occurs
+       FROM publication P
+       WHERE P.pubid = :pubid;
+   if (occurs == 0) {
+     EXEC SQL
+        INSERT INTO publication (pubid, title)
+        VALUES (:pubid, :title); 
+   } else {
+     EXEC SQL
+        UPDATE publication
+        SET title = :title
+        WHERE pubid = :pubid;        
+   }       
+   printf("Pubid: %s\n", pubid);
+   printf("Type: journal\n");
+   printf("Title: %s\n", title);
+   char* volumeStr;
+   char* numberStr;
+   char* yearStr;
+   volumeStr = strtok(NULL, "#");
+   numberStr = strtok(NULL, "#");
+   yearStr = strtok(NULL, ")");
+   volume = atoi(volumeStr);
+   number = atoi(numberStr);
+   year = atoi(yearStr);
+
+   EXEC SQL
+       SELECT COUNT(*) INTO :occurs
+       FROM journal J
+       WHERE J.pubid = :pubid;
+   if (occurs == 0) {
+       EXEC SQL
+          INSERT INTO journal (pubid, volume, number, year)
+          VALUES (:pubid, :volume, :number, :year);      
+   } else {
+       EXEC SQL
+          UPDATE journal
+          SET volume = :volume, number = :number, year = :year
+          WHERE pubid = :pubid;  
+   }
+   printf("Volume: %d\n", volume);
+   printf("Number: %d\n", number);
+   printf("Year: %d\n\n", year);
+}
+
+
+
+void updateProceedings(char* inputStr) {
+   char* pubidStr;
+   char* pubTitle;
+   pubidStr = strtok(NULL, "#");
+   pubTitle = strtok(NULL, "#");
+   strcpy(pubid, pubidStr);
+   strcpy(title, pubTitle);
+   EXEC SQL
+       SELECT COUNT(*) INTO :occurs
+       FROM publication P
+       WHERE P.pubid = :pubid;
+   if (occurs == 0) {
+     EXEC SQL
+        INSERT INTO publication (pubid, title)
+        VALUES (:pubid, :title); 
+   } else {
+     EXEC SQL
+        UPDATE publication
+        SET title = :title
+        WHERE pubid = :pubid;        
+   }       
+   printf("Pubid: %s\n", pubid);
+   printf("Type: proceedings\n");
+   printf("Title: %s\n", title);  
+   char* yearStr;
+   yearStr = strtok(NULL, ")");
+   year = atoi(yearStr);
+   EXEC SQL
+       SELECT COUNT(*) INTO :occurs
+       FROM proceedings P
+       WHERE P.pubid = :pubid;
+   if(occurs == 0) {
+       EXEC SQL
+          INSERT INTO proceedings (pubid, year)
+          VALUES (:pubid, :year);      
+   } else {
+       EXEC SQL
+          UPDATE proceedings
+          SET year = :year
+          WHERE pubid = :pubid;  
+   }
+   printf("Year: %d\n\n", year);
+}
+
+
+
+
+void updateArticle(char* inputStr) {
+   char* pubidStr;
+   char* pubTitle;
+   pubidStr = strtok(NULL, "#");
+   pubTitle = strtok(NULL, "#");
+   strcpy(pubid, pubidStr);
+   strcpy(title, pubTitle);
+   EXEC SQL
+       SELECT COUNT(*) INTO :occurs
+       FROM publication P
+       WHERE P.pubid = :pubid;
+   if (occurs == 0) {
+     EXEC SQL
+        INSERT INTO publication (pubid, title)
+        VALUES (:pubid, :title); 
+   } else {
+     EXEC SQL
+        UPDATE publication
+        SET title = :title
+        WHERE pubid = :pubid;        
+   }       
+   printf("Pubid: %s\n", pubid);
+   printf("Type: article\n");
+   printf("Title: %s\n", title);  
+
+   char* newAuthors;
+   char* aidStr1;
+   newAuthors = strtok(NULL, "#");
+
+   char* strappearsin;
+   char* startpageStr;
+   char* endpageStr;
+   strappearsin = strtok(NULL, "#");
+   strcpy(appearsin, strappearsin);
+   startpageStr = strtok(NULL, "#");
+   startpage = atoi(startpageStr);
+   endpageStr = strtok(NULL, ")");
+   endpage = atoi(endpageStr);
+
+   EXEC SQL
+       DELETE FROM wrote
+       WHERE pubid = :pubid;    
+
+   aidStr1 = strtok(newAuthors, ";");
+   printf("Authors: ");
+   for(temp = 1; aidStr1 != 0; temp++) {
+       aid = atoi(aidStr1); 
+       aorder = temp;
+       EXEC SQL
+           INSERT INTO wrote (aid, pubid, aorder)
+           VALUES (:aid, :pubid, :aorder);
+
+       aidStr1 = strtok(NULL, ";");
+   
+////     getAuthors()
+
+       printf(" %d ", aid);
+   }
+   printf("\n"); 
+
+   EXEC SQL
+       SELECT COUNT(*) INTO :occurs
+       FROM article A
+       WHERE A.pubid = :pubid;
+   if(occurs == 0) {
+       EXEC SQL
+          INSERT INTO article (pubid, appearsin, startpage, endpage)
+          VALUES (:pubid, :appearsin, :startpage, :endpage);      
+   } else {
+       EXEC SQL
+          UPDATE article
+          SET appearsin = :appearsin, startpage = :startpage, endpage = :endpage
+          WHERE pubid = :pubid;  
+   }
+   printf("In: %s\n", appearsin);
+   printf("Pages: %d--%d\n\n", startpage, endpage);
+} 
+
+
+
+int main(int argc, char *argv[]) {
+  char * getpass();
+  EXEC SQL WHENEVER SQLERROR GOTO error;
+  EXEC SQL CONNECT TO :sample;
+  char* inputStr = NULL;
+  char *inputType = NULL;
+  size_t len = 0;
+  if (stdin == NULL) {
+     return(-1);
+  }
+   for(;;) {
+     getline(&inputStr, &len, stdin);
+     if(feof(stdin)) {
+        break;
+     }
+     inputType = strtok(inputStr, "(");
+     if (strcmp(inputType, author) == 0) {
+        updateAuthor(inputStr);
+     }
+     if (strcmp(inputType, authorurl) == 0) {
+        updateAuthorurl(inputStr);
+     }
+     if (strcmp(inputType, book) == 0) {
+        updateBook(inputStr);
+     } 
+     if (strcmp(inputType, journal) == 0) {
+         updateJournal(inputStr);
+     }
+     if(strcmp(inputType, proceedings) == 0) {
+        updateProceedings(inputStr);
+     } 
+     if (strcmp(inputType, article) == 0) {
+        updateArticle(inputStr);
+     }    
+  }
+
+
+
+EXEC SQL COMMIT WORK;
+EXEC SQL CONNECT RESET;
+return(0);
+error:
+printf("update failed, sqlcode = %d\n",SQLCODE );
+EXEC SQL ROLLBACK WORK;
+return(-1);
+}

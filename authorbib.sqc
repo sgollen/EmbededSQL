@@ -1,0 +1,197 @@
+#include <stdio.h>
+#include "util.h"
+#include <string.h>
+
+EXEC SQL INCLUDE SQLCA; 
+
+EXEC SQL BEGIN DECLARE SECTION;
+  char book[5] = "book";
+  char journal[8] = "journal";
+  char proceedings[12] = "proceedings";
+  char article[8] = "article";
+  char name[23];
+  char givenName[23];
+  char url[43];
+  char pubid[11];
+  char title[71];
+  char publisher[51];
+  int year;
+  int volume;
+  int number;
+  char appearsIn[11];
+  int startPage;
+  int endPage;
+  char docType[11];
+EXEC SQL END DECLARE SECTION;
+
+void getAuthors() { 
+    EXEC SQL DECLARE CUR1 CURSOR FOR
+       SELECT (A.name)
+       FROM author A, wrote W
+       WHERE A.aid = W.aid 
+         AND W.pubid = :pubid;
+
+    EXEC SQL OPEN CUR1;
+    EXEC SQL FETCH CUR1 INTO :name;
+    if (SQLCODE != 100) {
+       printf("Authors: %s", name);
+    }
+
+    for(;;) {
+      EXEC SQL FETCH CUR1 INTO :name;
+         if (SQLCODE == 100) { 
+            break; 
+         } else if (SQLCODE < 0) { 
+            break;
+         }
+         printf(", %s", name);
+    }
+    printf("\n");
+    EXEC SQL CLOSE CUR1;
+}
+
+void printBooks() {
+  EXEC SQL
+      SELECT B.publisher INTO :publisher
+      FROM book B
+      WHERE B.pubid = :pubid;
+
+  getAuthors();
+  printf("Publishher: %s\n", publisher);
+  printf("Year: %d\n", year);
+}
+
+void printJournals() {
+  EXEC SQL
+      SELECT J.volume, J.number INTO :volume, :number
+      FROM journal J
+      WHERE J.pubid = :pubid;
+  printf("Volume: %d\n", volume);
+  printf("Number: %d\n", number);
+  printf("Year: %d\n", year);
+}
+
+void printArticles() {
+  EXEC SQL
+      SELECT A.appearsin, A.startpage, A.endpage INTO :appearsIn, :startPage, :endPage
+      FROM article A
+      WHERE A.pubid = :pubid;
+  getAuthors();
+  printf("In: %s\n", appearsIn);
+  printf("Pages: %d--%d\n", startPage, endPage);
+}
+
+
+
+int main(int argc, char *argv[]) {
+
+char* getpass();
+
+   EXEC SQL BEGIN DECLARE SECTION;
+      char db[6] = "cs348";
+   EXEC SQL END DECLARE SECTION;
+   EXEC SQL WHENEVER SQLERROR  GO TO error;
+   EXEC SQL CONNECT TO :db;
+
+  strcpy(givenName, argv[1]);
+
+  EXEC SQL DECLARE CUR2 CURSOR FOR
+  WITH bookTable(pubid, year, docTyp) AS (
+         SELECT B.pubid, B.year, 'book' AS docTyp
+         FROM  author A, wrote W, book B, publication P
+         WHERE A.name = :givenName
+         AND A.aid = W.aid 
+         AND W.aorder = 1
+         AND P.pubid = W.pubid 
+         AND B.pubid = P.pubid ),
+    articleTable(pubid, year, docTyp) AS (
+         SELECT ART.pubid, PROCEED.year, 'article' AS docTyp
+         FROM article ART, author A, wrote W, publication P, proceedings PROCEED
+         WHERE A.name = :givenName
+         AND W.aid = A.aid
+         AND W.aorder = 1
+         AND P.pubid = W.pubid
+         AND ART.pubid = P.pubid 
+         AND ART.appearsin = PROCEED.pubid
+         UNION
+         SELECT ART.pubid, J.year, 'article' AS docTyp
+         FROM article ART, author A, wrote W, publication P, journal J
+         WHERE A.name = :givenName 
+         AND W.aid = A.aid
+         AND W.aorder = 1
+         AND P.pubid = W.pubid
+         AND ART.pubid = P.pubid 
+         AND ART.appearsin = J.pubid
+        ),   
+     appearsInTable(pubid, year, docTyp) AS (
+         SELECT PROCEED.pubid, PROCEED.year, 'proceedings' AS docTyp
+         FROM proceedings PROCEED, article ART, wrote W, publication P, author A
+         WHERE A.name = :givenName
+         AND W.aid = A.aid
+         AND W.aorder = 1
+         AND P.pubid = W.pubid
+         AND ART.pubid = P.pubid
+         AND ART.appearsin = PROCEED.pubid
+         UNION
+         SELECT J.pubid, J.year, 'journal' AS docTyp
+         FROM journal J, article ART, wrote W, publication P, author A
+         WHERE A.name = :givenName
+         AND W.aid = A.aid
+         AND W.aorder = 1
+         AND P.pubid = W.pubid
+         AND ART.pubid = P.pubid
+         AND ART.appearsin = J.pubid
+        )  
+     SELECT *
+     FROM bookTable
+     UNION
+     SELECT *
+     FROM articleTable
+     UNION
+     SELECT *
+     FROM appearsInTable
+     ORDER BY year desc;
+
+    EXEC SQL OPEN CUR2;
+    for(;;) {
+  ////// printf("executing FORLOOP\n");
+        EXEC SQL FETCH CUR2 INTO :pubid, :year, :docType;
+        if (SQLCODE == 100) { 
+            break; 
+        } else if (SQLCODE < 0) { 
+            break;
+        }
+        printf("Pubid: %s\n", pubid);
+        printf("Type: %s\n", docType);
+        EXEC SQL
+           select p.title INTO :title
+           from publication p
+           where p.pubid = :pubid;
+////printf("calling helpers\n");
+        printf("Title: %s\n", title);
+        if(strcmp(docType, book) == 0) {
+           printBooks();
+        } else if(strcmp(docType, journal) == 0) {
+           printJournals();
+        } else if(strcmp(docType, proceedings) == 0) {
+           printf("Year: %d\n", year);
+        } else if(strcmp(docType, article) == 0) {
+           printArticles();
+        }
+        printf("\n");
+    }
+
+    EXEC SQL CLOSE CUR2;
+
+    EXEC SQL COMMIT;
+    EXEC SQL CONNECT reset;
+    return(0);
+
+error:
+   check_error("My error",&sqlca);
+   EXEC SQL WHENEVER SQLERROR CONTINUE;
+
+   EXEC SQL ROLLBACK;
+   EXEC SQL CONNECT reset;
+   return(-1);
+}
